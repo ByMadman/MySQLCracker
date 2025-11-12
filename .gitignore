@@ -1,0 +1,28 @@
+# Visual Studio files
+.vs/
+obj/
+bin/
+*.suo
+*.user
+*.csproj.user
+*.sln.docstates
+
+# Logs
+*.log
+fail.txt
+mysql_success.txt
+
+# Test data
+*.txt
+!test_*.txt
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build outputs
+独立可执行文件/
+
+# Temporary files
+*.tmp
+*.temp
