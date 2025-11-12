@@ -400,7 +400,7 @@ namespace MySQLCracker
         /// </summary>
         private static void ShowHelp()
         {
-            Console.WriteLine("用法: MySQLCracker.exe -i ips.txt -u user.txt -p password.txt -x 500");
+            Console.WriteLine("用法: MySQLCracker.exe -i ip.txt -u user.txt -p password.txt -x 500");
             Console.WriteLine();
             Console.WriteLine("参数说明:");
             Console.WriteLine("  -i    指定IP地址文件路径（必需）");
@@ -472,11 +472,11 @@ namespace MySQLCracker
                 }
 
                 // 检查libmysql.dll是否存在
-            string libPath = Path.Combine("data", "libmySQL.dll");
+            string libPath = Path.Combine("", "libmySQL.dll");
             if (!File.Exists(libPath))
             {
                 Console.WriteLine($"[错误] libmysql.dll不存在于指定路径: {libPath}");
-                Console.WriteLine("请确保在data目录下放置了正确版本的libmysql.dll文件");
+                Console.WriteLine("请确保在跟目录下放置了正确版本的libmysql.dll文件");
                 return false;
             }
 
