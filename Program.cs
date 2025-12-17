@@ -484,6 +484,7 @@ namespace MySQLCracker
                     threadCount = MAX_THREADS;
                 }
 
+
                 return true;
             }
             catch (Exception ex)
